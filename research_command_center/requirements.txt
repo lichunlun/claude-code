@@ -1,0 +1,12 @@
+# Research Command Center —— 运行依赖（已在 Python 3.13 上测试；需要 Python >= 3.11）
+streamlit>=1.66,<2
+pandas>=2.2
+plotly>=5.24
+SQLAlchemy>=2.0.30,<3
+PyMuPDF>=1.24
+python-docx>=1.1
+openpyxl>=3.1
+APScheduler>=3.10,<4
+requests>=2.31
+keyring>=25
+anthropic>=2.4,<3

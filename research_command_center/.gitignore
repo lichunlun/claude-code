@@ -1,0 +1,15 @@
+# 运行环境
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 本地数据（数据库与代码分离，不纳入版本库）
+data/
+demo_data/
+backups/
+*.db
+*.db-journal
+
+# 本地配置
+config/settings.toml
