@@ -2,6 +2,13 @@
 # score_topics.R  --  Transparent, reproducible scoring of candidate research
 #                     topics for an undergraduate original-research project.
 #
+# !! NOT EXECUTED. READ THIS FIRST. !!
+#   R could not be installed in the environment where these deliverables were
+#   prepared, so this file has NEVER BEEN RUN. The scoring actually reported in
+#   02_15_Candidate_Topics.md was produced by score_topics.py, which WAS run and
+#   whose self-test passes 7/7. Expect to fix errors on first use, and treat the
+#   Python version as the reference implementation if the two disagree.
+#
 # WHY THIS SCRIPT EXISTS
 #   The committee's 100-point rubric is easy to apply dishonestly: you pick the
 #   topic you like, then back-fill the sub-scores. This script forces the
