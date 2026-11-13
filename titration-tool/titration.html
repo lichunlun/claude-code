@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抗癫痫药物滴定方案生成器</title>
+<style>
+/* ========== 基础样式（第 1 步只含横幅与测试区，输出样式在第 3/4 步加入） ========== */
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: #111; background: #f5f5f5;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  font-size: 16px; line-height: 1.5;
+}
+main { max-width: 960px; margin: 0 auto; padding: 12px; }
+h1 { font-size: 20px; margin: 12px 0 4px; }
+h2 { font-size: 17px; margin: 20px 0 8px; }
+.muted { color: #555; font-size: 13px; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin: 12px 0; }
+
+/* 演示数据红色横幅：始终置顶，打印时也保留 */
+.banner {
+  position: sticky; top: 0; z-index: 10;
+  background: #c00; color: #fff; font-weight: 700; text-align: center;
+  padding: 8px 12px; font-size: 16px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+[hidden] { display: none !important; }
+
+/* 测试区 */
+.t-summary { font-weight: 700; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
+.t-summary.ok { background: #e3f4e3; color: #145214; }
+.t-summary.bad { background: #fde4e4; color: #8a0000; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+table.t th, table.t td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
+table.t th { background: #eee; }
+table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
+.st-pass { color: #145214; font-weight: 700; }
+.st-fail { color: #b00000; font-weight: 700; }
+.st-todo { color: #8a5a00; font-weight: 700; }
+.tag { display: inline-block; font-size: 11px; padding: 0 5px; border-radius: 3px; background: #fff3cd; color: #6b4e00; border: 1px solid #e0c060; margin-left: 4px; }
+.fx { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fx pre { margin: 0; padding: 6px; background: #fafafa; border: 1px solid #ccc; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+.fx .diff { background: #fde4e4; }
+@media (max-width: 600px) { .fx { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div id="demo-banner" class="banner" hidden>⚠ 当前载入演示数据，数值为虚构，严禁用于临床</div>
+
+<main>
+  <h1>抗癫痫药物滴定方案生成器</h1>
+  <div class="muted">版本 <span id="ver"></span> ｜ 本工具不存储任何数据，刷新页面即清空</div>
+
+  <!-- 输入区与输出区：第 3、4 步实现 -->
+  <section id="app" class="card">
+    <div class="muted">（输入区、医生版、患者版将在第 3、4 步实现。当前为第 1 步：数据结构 + 演示数据 + 测试骨架。网址末尾加 <code>?test=1</code> 查看测试区。）</div>
+  </section>
+
+  <!-- 页内测试区：仅在 ?test=1 时显示 -->
+  <section id="test-area" hidden>
+    <h2>单元测试</h2>
+    <div id="t-summary"></div>
+    <div id="t-results"></div>
+    <h2>说明书标准方案对照（FIXTURES）：期望 vs 实际</h2>
+    <div id="fx-results"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+/* =====================================================================
+ * 一、版本与开关
+ * ===================================================================== */
+const TOOL_VERSION = "0.1.0-step1";
+
+// 是否载入演示数据。正式数据核对填写完成后改为 false，演示药与红色横幅即消失。
+const LOAD_DEMO_DATA = true;
+
+/* =====================================================================
+ * 二、正式药物数据（由使用者对照药品说明书手工填写）
+ *
+ * ！！！本区所有数值必须来自说明书核对，不得凭记忆填写 ！！！
+ * - 数值位置一律为 null，填写并核对后再把 dataVerified 改为 true
+ * - id 为空的条目视为模板，不会出现在界面上
+ * - 新增药物：复制下面整个对象，逐项填写
+ * ===================================================================== */
+const DRUGS = [{
+  id: "",
+  nameCn: "", nameEn: "", brandCn: [],
+  strengths: [],            // 国内可得规格(mg)
+  splittable: null,         // 药片可否分割（true/false）
+  allowAlternateDay: null,  // 可否隔日服（true/false）
+  weightBased: null,        // 是否按体重给药（true/false）
+  titrationPaths: [{
+    scenario: "",           // monotherapy | withInhibitor | withInducer | custom
+    label: "",              // 中文说明，显示给医生
+    steps: [{ weekFrom: null, weekTo: null, dailyDose: null, dosesPerDay: null, note: "" }],
+    escalation: { amount: null, everyWeeks: null }, // 固定步骤走完后的递增规则
+    maintenanceRange: [null, null]
+  }],
+  cautions: [],
+  sources: [{ type: "", name: "", version: "", date: "" }], // 数据来源，用于论文 Methods
+  dataVerified: false
+}];
+
+// 合并用药 → 情境判定用的药物分类表。同样留空待填。
+// 每项格式：{ id: "", nameCn: "" }
+const INTERACTION_CLASSES = { inducers: [], inhibitors: [], neutral: [] };
+
+/* =====================================================================
+ * 三、演示数据（全部虚构，仅用于跑通流程和测试，严禁用于临床）
+ * 药名用"演示药X"，数值用 5/10/20/30 这类一眼假的整数。
+ * ===================================================================== */
+const DEMO_SOURCE = [{ type: "演示", name: "虚构数据，不对应任何药品说明书", version: "-", date: "-" }];
+
+const DEMO_DRUGS = [{
+  // 演示药A：不可掰、允许隔日、三条情境分支齐全
+  id: "demoA", isDemo: true,
+  nameCn: "演示药A", nameEn: "Demo Drug A", brandCn: ["演示牌A"],
+  strengths: [10, 20], splittable: false, allowAlternateDay: true, weightBased: false,
+  titrationPaths: [{
+    scenario: "monotherapy", label: "演示：单药方案",
+    steps: [
+      { weekFrom: 1, weekTo: 2, dailyDose: 10, dosesPerDay: 1, note: "" },
+      { weekFrom: 3, weekTo: 4, dailyDose: 20, dosesPerDay: 2, note: "" }
+    ],
+    escalation: { amount: 20, everyWeeks: 1 },
+    maintenanceRange: [40, 80]
+  }, {
+    scenario: "withInhibitor", label: "演示：合用抑制剂（放慢）",
+    steps: [
+      { weekFrom: 1, weekTo: 2, dailyDose: 5, dosesPerDay: 1, note: "演示：低于最小规格，需隔日服" },
+      { weekFrom: 3, weekTo: 4, dailyDose: 10, dosesPerDay: 1, note: "" }
+    ],
+    escalation: { amount: 10, everyWeeks: 2 },
+    maintenanceRange: [20, 40]
+  }, {
+    scenario: "withInducer", label: "演示：合用诱导剂（加快）",
+    steps: [
+      { weekFrom: 1, weekTo: 2, dailyDose: 20, dosesPerDay: 1, note: "" },
+      { weekFrom: 3, weekTo: 4, dailyDose: 40, dosesPerDay: 2, note: "" }
+    ],
+    escalation: { amount: 40, everyWeeks: 1 },
+    maintenanceRange: [80, 160]
+  }],
+  cautions: ["演示注意事项：本条为虚构"],
+  sources: DEMO_SOURCE,
+  dataVerified: false
+}, {
+  // 演示药B：单一规格、可掰半、不允许隔日、只有单药方案（用于测"无对应情境方案"）
+  id: "demoB", isDemo: true,
+  nameCn: "演示药B", nameEn: "Demo Drug B", brandCn: [],
+  strengths: [30], splittable: true, allowAlternateDay: false, weightBased: false,
+  titrationPaths: [{
+    scenario: "monotherapy", label: "演示：单药方案",
+    steps: [
+      { weekFrom: 1, weekTo: 1, dailyDose: 15, dosesPerDay: 1, note: "" },
+      { weekFrom: 2, weekTo: 3, dailyDose: 30, dosesPerDay: 2, note: "" }
+    ],
+    escalation: { amount: 30, everyWeeks: 1 },
+    maintenanceRange: [60, 120]
+  }],
+  cautions: [],
+  sources: DEMO_SOURCE,
+  dataVerified: false
+}];
+
+const DEMO_INTERACTION_CLASSES = {
+  inducers:   [{ id: "demoInducerX",   nameCn: "演示诱导剂X" }],
+  inhibitors: [{ id: "demoInhibitorY", nameCn: "演示抑制剂Y" }],
+  neutral:    [{ id: "demoNeutralZ",   nameCn: "演示中性药Z" }]
+};
+
+/* =====================================================================
+ * 四、当前生效的数据集（正式数据 + 可选演示数据）
+ * ===================================================================== */
+const ALL_DRUGS = DRUGS.filter(d => d.id).concat(LOAD_DEMO_DATA ? DEMO_DRUGS : []);
+const ACTIVE_CLASSES = {
+  inducers:   INTERACTION_CLASSES.inducers.concat(LOAD_DEMO_DATA ? DEMO_INTERACTION_CLASSES.inducers : []),
+  inhibitors: INTERACTION_CLASSES.inhibitors.concat(LOAD_DEMO_DATA ? DEMO_INTERACTION_CLASSES.inhibitors : []),
+  neutral:    INTERACTION_CLASSES.neutral.concat(LOAD_DEMO_DATA ? DEMO_INTERACTION_CLASSES.neutral : [])
+};
+
+/* =====================================================================
+ * 五、计算核心（纯函数，不碰 DOM、不读全局数据，所有输入经参数传入）
+ * 第 1 步只定义签名与返回值约定，函数体在第 2 步实现。
+ * ===================================================================== */
+class NotImplemented extends Error {}
+function todo(name) { throw new NotImplemented(name + " 尚未实现（第 2 步）"); }
+
+/**
+ * 1. 情境判定：根据合并用药决定采用目标药物的哪条 titrationPath。
+ * @param {string[]} concomitantIds 合并用药 id 列表（空数组 = 单药）
+ * @param {{inducers:Array, inhibitors:Array, neutral:Array}} classes 药物分类表
+ * @param {object} drug 目标药物
+ * @returns {{
+ *   scenario: string|null,   // 判定出的情境；需人工判断时为 null
+ *   path: object|null,       // 对应的 titrationPath；需人工判断时为 null
+ *   needsManual: boolean,    // true = 程序不自动选，交医生决定
+ *   basis: string,           // 中文判定依据，显示在医生版
+ *   matched: {inducers:string[], inhibitors:string[], neutral:string[], unknown:string[]}
+ * }}
+ */
+function resolveScenario(concomitantIds, classes, drug) { todo("resolveScenario"); }
+
+/**
+ * 2. 展开滴定序列：固定步骤 → 按 escalation 递增 → 到达目标剂量后维持。
+ * @param {object} path 一条 titrationPath
+ * @param {number} targetDose 目标日剂量(mg)
+ * @returns {{
+ *   ok: boolean,
+ *   segments: Array<{weekFrom:number, weekTo:number|null, dailyDose:number, dosesPerDay:number, note:string}>,
+ *                          // 最后一段 weekTo 为 null，表示"自该周起维持"
+ *   warnings: string[],    // 可生成但需提醒医生的事项
+ *   error: string          // ok=false 时的原因
+ * }}
+ */
+function expandSchedule(path, targetDose) { todo("expandSchedule"); }
+
+/**
+ * 3. 凑片：把"日剂量 + 分次"换算成可执行的片数组合。本工具的核心价值所在。
+ * @param {number} dailyDose 日剂量(mg)
+ * @param {number} dosesPerDay 每日次数
+ * @param {number[]} strengths 可用规格(mg)
+ * @param {boolean} splittable 可否掰半
+ * @param {boolean} allowAlternateDay 可否隔日服
+ * @returns {{
+ *   ok: boolean,
+ *   mode: "daily"|"alternateDay",   // alternateDay = 隔日服一次
+ *   doses: Array<{mg:number, pieces:Array<{strength:number, count:number}>}>,
+ *                          // 每次服药的组合；count 可为 0.5 的倍数；隔日模式下只有 1 项
+ *   usesHalf: boolean,     // 是否用到半片
+ *   reason: string         // ok=false 时的原因，如"该剂量无法用现有规格凑出"
+ * }}
+ */
+function fitToTablets(dailyDose, dosesPerDay, strengths, splittable, allowAlternateDay) { todo("fitToTablets"); }
+
+/**
+ * 4. 排日历：把带凑片结果的周序列映射到真实日期。
+ * @param {Array} schedule expandSchedule 的 segments，每段附加 fit（fitToTablets 的结果）
+ * @param {string} startDate 起始日期 "YYYY-MM-DD"
+ * @param {number} days 需要排出的天数
+ * @returns {{
+ *   ok: boolean,
+ *   days: Array<{
+ *     date: string,          // "YYYY-MM-DD"
+ *     dayNo: number,         // 第几天（从 1 起）
+ *     week: number,          // 第几周（从 1 起）
+ *     slots: {"早":Array|null, "中":Array|null, "晚":Array|null}, // 各时段的 pieces，不服为 null
+ *     skip: boolean,         // 隔日方案中"今天不吃药"的那天
+ *     isChangeDay: boolean   // 剂量变化的第一天（"今天开始加量"）
+ *   }>,
+ *   error: string
+ * }}
+ */
+function toCalendar(schedule, startDate, days) { todo("toCalendar"); }
+
+/**
+ * 把带凑片结果的周序列格式化成规范文本行（医生版表格与 FIXTURES 逐字比对共用）。
+ * @returns {string[]} 例："第1–2周｜日剂量 10 mg｜每日 1 次｜每次 10 mg 片 × 1"
+ */
+function formatScheduleLines(schedule) { todo("formatScheduleLines"); }
+
+/* =====================================================================
+ * 六、页内测试（?test=1 显示）
+ * ===================================================================== */
+const TESTS = [];
+// confirm=true 表示该用例的期望值取决于尚待使用者确认的规则
+function test(group, name, fn, confirm) { TESTS.push({ group, name, fn, confirm: !!confirm }); }
+function eq(actual, expected) {
+  const a = JSON.stringify(actual), e = JSON.stringify(expected);
+  if (a !== e) throw new Error("期望 " + e + "，实际 " + a);
+}
+// 取演示药的某条路径
+function demoPath(drugId, scenario) {
+  return DEMO_DRUGS.find(d => d.id === drugId).titrationPaths.find(p => p.scenario === scenario);
+}
+// 把 segments 压成 [起始周, 结束周, 日剂量, 次数] 便于比对
+function segBrief(r) { return r.ok ? r.segments.map(s => [s.weekFrom, s.weekTo, s.dailyDose, s.dosesPerDay]) : "失败"; }
+// 把凑片结果压成字符串，如 "daily:1x20" / "daily:0.5x10|0.5x10" / "alternateDay:1x20"
+function fitBrief(r) {
+  if (!r.ok) return "无法凑出";
+  return r.mode + ":" + r.doses.map(d => d.pieces.map(p => p.count + "x" + p.strength).join("+")).join("|");
+}
+// 构造一个"每次 n 片某规格"的凑片结果，供 toCalendar 测试用
+function mkFit(mode, perDay, strength, count) {
+  const one = { mg: strength * count, pieces: [{ strength, count }] };
+  return { ok: true, mode, doses: Array.from({ length: perDay }, () => one), usesHalf: count % 1 !== 0, reason: "" };
+}
+
+/* ---------- 数据与安全标记 ---------- */
+test("数据", "演示药全部标记为未核对且药名以「演示」开头", () => {
+  eq(DEMO_DRUGS.every(d => d.dataVerified === false && d.isDemo && d.nameCn.startsWith("演示")), true);
+});
+test("数据", "载入演示数据时红色横幅可见", () => {
+  eq(document.getElementById("demo-banner").hidden, !LOAD_DEMO_DATA);
+});
+test("数据", "正式数据区的空模板（id 为空）不进入可选药物", () => {
+  eq(ALL_DRUGS.some(d => !d.id), false);
+});
+
+/* ---------- 1. resolveScenario ---------- */
+const A = DEMO_DRUGS[0], B = DEMO_DRUGS[1], C = DEMO_INTERACTION_CLASSES;
+test("情境判定", "无合并用药 → 单药方案", () => {
+  const r = resolveScenario([], C, A);
+  eq([r.scenario, r.needsManual, r.path === demoPath("demoA", "monotherapy")], ["monotherapy", false, true]);
+});
+test("情境判定", "合用诱导剂 → 诱导剂方案", () => {
+  const r = resolveScenario(["demoInducerX"], C, A);
+  eq([r.scenario, r.needsManual, r.matched.inducers], ["withInducer", false, ["demoInducerX"]]);
+});
+test("情境判定", "合用抑制剂 → 抑制剂方案", () => {
+  const r = resolveScenario(["demoInhibitorY"], C, A);
+  eq([r.scenario, r.needsManual, r.matched.inhibitors], ["withInhibitor", false, ["demoInhibitorY"]]);
+});
+test("情境判定", "同时含诱导剂和抑制剂 → 需人工判断，不自动选", () => {
+  const r = resolveScenario(["demoInducerX", "demoInhibitorY"], C, A);
+  eq([r.scenario, r.path, r.needsManual], [null, null, true]);
+});
+test("情境判定", "判定依据为非空中文说明", () => {
+  const r = resolveScenario(["demoInducerX"], C, A);
+  eq(typeof r.basis === "string" && r.basis.includes("演示诱导剂X"), true);
+});
+test("情境判定", "仅合用中性药 → 采用单药方案", () => {
+  const r = resolveScenario(["demoNeutralZ"], C, A);
+  eq([r.scenario, r.needsManual, r.matched.neutral], ["monotherapy", false, ["demoNeutralZ"]]);
+}, true);
+test("情境判定", "合用药不在分类表中 → 需人工判断", () => {
+  const r = resolveScenario(["不认识的药"], C, A);
+  eq([r.scenario, r.needsManual, r.matched.unknown], [null, true, ["不认识的药"]]);
+}, true);
+test("情境判定", "目标药没有对应情境的方案 → 需人工判断", () => {
+  const r = resolveScenario(["demoInducerX"], C, B);
+  eq([r.path, r.needsManual], [null, true]);
+});
+
+/* ---------- 2. expandSchedule（演示药A单药：1–2周 10，3–4周 20，之后每 1 周 +20） ---------- */
+const MONO = demoPath("demoA", "monotherapy");
+test("展开序列", "目标剂量恰在某固定步上 → 止于该步并维持", () => {
+  eq(segBrief(expandSchedule(MONO, 20)), [[1, 2, 10, 1], [3, null, 20, 2]]);
+});
+test("展开序列", "目标剂量等于起始剂量 → 只有一段", () => {
+  eq(segBrief(expandSchedule(MONO, 10)), [[1, null, 10, 1]]);
+});
+test("展开序列", "目标高于固定步骤 → 按递增规则加到目标", () => {
+  eq(segBrief(expandSchedule(MONO, 60)), [[1, 2, 10, 1], [3, 4, 20, 2], [5, 5, 40, 2], [6, null, 60, 2]]);
+});
+test("展开序列", "递增间隔为 2 周（演示药A抑制剂方案）", () => {
+  eq(segBrief(expandSchedule(demoPath("demoA", "withInhibitor"), 30)),
+     [[1, 2, 5, 1], [3, 4, 10, 1], [5, 6, 20, 1], [7, null, 30, 1]]);
+});
+test("展开序列", "目标落在两次递增之间 → 最后一步封顶到目标", () => {
+  eq(segBrief(expandSchedule(MONO, 50)), [[1, 2, 10, 1], [3, 4, 20, 2], [5, 5, 40, 2], [6, null, 50, 2]]);
+}, true);
+test("展开序列", "目标落在两个固定步之间 → 该步封顶到目标", () => {
+  eq(segBrief(expandSchedule(MONO, 15)), [[1, 2, 10, 1], [3, null, 15, 2]]);
+}, true);
+test("展开序列", "目标剂量低于起始剂量 → 不生成，提示核对", () => {
+  const r = expandSchedule(MONO, 5);
+  eq([r.ok, r.error.length > 0], [false, true]);
+}, true);
+test("展开序列", "目标超出维持剂量范围上限 → 仍生成但给出警告", () => {
+  const r = expandSchedule(MONO, 100);
+  eq([r.ok, r.warnings.length > 0], [true, true]);
+}, true);
+test("展开序列", "目标剂量非法（空/0/负数）→ 不生成", () => {
+  eq([null, 0, -10, NaN].map(t => expandSchedule(MONO, t).ok), [false, false, false, false]);
+});
+test("展开序列", "路径数据未填写（含 null）→ 不生成", () => {
+  eq(expandSchedule(DRUGS[0].titrationPaths[0], 20).ok, false);
+});
+test("展开序列", "无递增规则而目标高于最后一步 → 不生成", () => {
+  const p = Object.assign({}, MONO, { escalation: { amount: null, everyWeeks: null } });
+  eq(expandSchedule(p, 60).ok, false);
+});
+
+/* ---------- 3. fitToTablets ---------- */
+test("凑片", "整片：20mg 一次，规格 [10,20] → 1 片 20", () => {
+  eq(fitBrief(fitToTablets(20, 1, [10, 20], false, false)), "daily:1x20");
+});
+test("凑片", "等分两次：20mg 分 2 次 → 每次 1 片 10", () => {
+  eq(fitBrief(fitToTablets(20, 2, [10, 20], false, false)), "daily:1x10|1x10");
+});
+test("凑片", "需要掰半：15mg，规格 [30] 可掰 → 半片", () => {
+  const r = fitToTablets(15, 1, [30], true, false);
+  eq([fitBrief(r), r.usesHalf], ["daily:0.5x30", true]);
+});
+test("凑片", "需要掰半但药片不可掰 → 无法凑出", () => {
+  eq(fitBrief(fitToTablets(15, 1, [30], false, false)), "无法凑出");
+});
+test("凑片", "无法凑出：15mg，规格 [20] 即使可掰也不行", () => {
+  const r = fitToTablets(15, 1, [20], true, false);
+  eq([r.ok, r.reason.length > 0], [false, true]);
+});
+test("凑片", "分次后每次剂量凑不出：30mg 分 2 次，规格 [10,20] 不可掰 → 无法凑出", () => {
+  eq(fitBrief(fitToTablets(30, 2, [10, 20], false, false)), "无法凑出");
+}, true);
+test("凑片", "需要隔日：5mg/日，规格 [10] 不可掰、允许隔日 → 隔日 1 片", () => {
+  eq(fitBrief(fitToTablets(5, 1, [10], false, true)), "alternateDay:1x10");
+});
+test("凑片", "需要隔日但该药不允许隔日 → 无法凑出", () => {
+  eq(fitBrief(fitToTablets(5, 1, [10], false, false)), "无法凑出");
+});
+test("凑片", "隔日只用于低于最小可服剂量的情形：25mg/日 规格 [10,20] 不得变成隔日 50mg", () => {
+  eq(fitBrief(fitToTablets(25, 1, [10, 20], false, true)), "无法凑出");
+}, true);
+test("凑片", "隔日只用于每日 1 次：5mg 分 2 次 → 无法凑出", () => {
+  eq(fitBrief(fitToTablets(5, 2, [10], false, true)), "无法凑出");
+}, true);
+test("凑片", "能用整片就不掰半：20mg，规格 [10,40] 可掰 → 2 片 10，而非半片 40", () => {
+  eq(fitBrief(fitToTablets(20, 1, [10, 40], true, false)), "daily:2x10");
+}, true);
+test("凑片", "多种整片组合时优先单一规格：30mg，规格 [10,20] → 3 片 10，而非 20+10", () => {
+  eq(fitBrief(fitToTablets(30, 1, [10, 20], false, false)), "daily:3x10");
+}, true);
+test("凑片", "小数剂量无浮点误差：2.5mg，规格 [5] 可掰 → 半片", () => {
+  eq(fitBrief(fitToTablets(2.5, 1, [5], true, false)), "daily:0.5x5");
+});
+test("凑片", "输入缺失（null/空规格）→ 无法凑出，绝不计算", () => {
+  eq([fitToTablets(null, 1, [10], false, false).ok, fitToTablets(10, null, [10], false, false).ok,
+      fitToTablets(10, 1, [], false, false).ok, fitToTablets(10, 1, [10], null, false).ok],
+     [false, false, false, false]);
+});
+
+/* ---------- 4. toCalendar ---------- */
+const SCHED = [
+  { weekFrom: 1, weekTo: 1, dailyDose: 10, dosesPerDay: 1, note: "", fit: mkFit("daily", 1, 10, 1) },
+  { weekFrom: 2, weekTo: null, dailyDose: 20, dosesPerDay: 2, note: "", fit: mkFit("daily", 2, 10, 1) }
+];
+test("排日历", "日期连续且跨月正确", () => {
+  const r = toCalendar(SCHED, "2026-01-30", 4);
+  eq(r.days.map(d => d.date), ["2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02"]);
+});
+test("排日历", "闰年 2 月 29 日与跨年", () => {
+  eq(toCalendar(SCHED, "2028-02-27", 4).days.map(d => d.date), ["2028-02-27", "2028-02-28", "2028-02-29", "2028-03-01"]);
+  eq(toCalendar(SCHED, "2026-12-30", 3).days.map(d => d.date), ["2026-12-30", "2026-12-31", "2027-01-01"]);
+});
+test("排日历", "周次按起始日每 7 天一周", () => {
+  eq(toCalendar(SCHED, "2026-03-01", 9).days.map(d => d.week), [1, 1, 1, 1, 1, 1, 1, 2, 2]);
+});
+test("排日历", "剂量变化的第一天标记为加量日，首日不标", () => {
+  eq(toCalendar(SCHED, "2026-03-01", 9).days.map(d => d.isChangeDay),
+     [false, false, false, false, false, false, false, true, false]);
+});
+test("排日历", "每日 2 次 → 早、晚各一次", () => {
+  const d = toCalendar(SCHED, "2026-03-01", 8).days[7];
+  eq([d.slots["早"], d.slots["中"], d.slots["晚"]], [[{ strength: 10, count: 1 }], null, [{ strength: 10, count: 1 }]]);
+}, true);
+test("排日历", "每日 1 次 → 排在早上", () => {
+  const d = toCalendar(SCHED, "2026-03-01", 1).days[0];
+  eq([d.slots["早"], d.slots["中"], d.slots["晚"]], [[{ strength: 10, count: 1 }], null, null]);
+}, true);
+test("排日历", "隔日方案：服药日与停药日交替，从该段第一天起算", () => {
+  const s = [{ weekFrom: 1, weekTo: 1, dailyDose: 5, dosesPerDay: 1, note: "", fit: mkFit("alternateDay", 1, 10, 1) }, SCHED[1]];
+  eq(toCalendar(s, "2026-03-01", 8).days.map(d => d.skip), [false, true, false, true, false, true, false, false]);
+}, true);
+test("排日历", "存在凑不出的剂量段 → 拒绝排日历", () => {
+  const s = [Object.assign({}, SCHED[0], { fit: { ok: false, reason: "该剂量无法用现有规格凑出" } })];
+  eq(toCalendar(s, "2026-03-01", 7).ok, false);
+});
+test("排日历", "起始日期非法 → 拒绝排日历", () => {
+  eq([toCalendar(SCHED, "", 7).ok, toCalendar(SCHED, "2026-02-30", 7).ok], [false, false]);
+});
+
+/* ---------- FIXTURES：说明书标准滴定方案（待使用者填入），程序输出须与之逐字一致 ----------
+ * 每条格式：
+ * { name: "说明书××方案",            // 显示名
+ *   source: "××说明书 版本/日期",      // 出处
+ *   drugId: "", concomitant: [],      // 目标药 id、合并用药 id 列表
+ *   targetDose: null,                 // 目标日剂量(mg)
+ *   expectedLines: [] }               // 期望输出，逐行文本
+ */
+const FIXTURES = [];
+
+// 演示 fixture：仅用于验证对照机制本身，数值虚构
+const DEMO_FIXTURES = [{
+  name: "演示：演示药A 单药，目标 40", source: "虚构", drugId: "demoA", concomitant: [], targetDose: 40,
+  expectedLines: [
+    "第1–2周｜日剂量 10 mg｜每日 1 次｜每次 10 mg 片 × 1",
+    "第3–4周｜日剂量 20 mg｜每日 2 次｜每次 10 mg 片 × 1",
+    "第5周起｜日剂量 40 mg｜每日 2 次｜每次 20 mg 片 × 1"
+  ]
+}];
+
+// 跑一条 fixture，返回实际输出行（任何一步失败都如实写进输出，不吞错）
+function runFixture(fx) {
+  const drug = ALL_DRUGS.find(d => d.id === fx.drugId);
+  if (!drug) return ["找不到药物：" + fx.drugId];
+  try {
+    const sc = resolveScenario(fx.concomitant, ACTIVE_CLASSES, drug);
+    if (sc.needsManual) return ["需人工判断：" + sc.basis];
+    const sch = expandSchedule(sc.path, fx.targetDose);
+    if (!sch.ok) return ["无法生成：" + sch.error];
+    return formatScheduleLines(sch.segments.map(s => Object.assign({}, s, {
+      fit: fitToTablets(s.dailyDose, s.dosesPerDay, drug.strengths, drug.splittable, drug.allowAlternateDay)
+    })));
+  } catch (e) {
+    return [(e instanceof NotImplemented ? "未实现：" : "出错：") + e.message];
+  }
+}
+
+/* ---------- 测试区渲染 ---------- */
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function runTests() {
+  let pass = 0, fail = 0, pending = 0;
+  const rows = TESTS.map(t => {
+    let st = "pass", msg = "";
+    try { t.fn(); pass++; }
+    catch (e) {
+      if (e instanceof NotImplemented) { st = "todo"; pending++; } else { st = "fail"; fail++; }
+      msg = e.message;
+    }
+    const label = { pass: "通过", fail: "失败", todo: "未实现" }[st];
+    return "<tr><td>" + esc(t.group) + "</td><td>" + esc(t.name) +
+      (t.confirm ? '<span class="tag">规则待确认</span>' : "") +
+      '</td><td class="st-' + st + '">' + label + "</td><td>" + esc(msg) + "</td></tr>";
+  });
+  const allGreen = fail === 0 && pending === 0;
+  document.getElementById("t-summary").innerHTML =
+    '<div class="t-summary ' + (allGreen ? "ok" : "bad") + '">共 ' + TESTS.length + " 项：通过 " + pass +
+    "，失败 " + fail + "，未实现 " + pending + (allGreen ? "　✔ 全部通过" : "") + "</div>";
+  document.getElementById("t-results").innerHTML =
+    '<table class="t"><tr><th>分组</th><th>用例</th><th>结果</th><th>信息</th></tr>' + rows.join("") + "</table>";
+}
+
+function runFixtures() {
+  const list = FIXTURES.concat(LOAD_DEMO_DATA ? DEMO_FIXTURES : []);
+  let html = FIXTURES.length ? "" : '<div class="muted">FIXTURES 为空：待填入说明书标准滴定方案。下方仅为演示对照。</div>';
+  list.forEach(fx => {
+    const actual = runFixture(fx), n = Math.max(actual.length, fx.expectedLines.length);
+    let same = actual.length === fx.expectedLines.length, left = "", right = "";
+    for (let i = 0; i < n; i++) {
+      const e = fx.expectedLines[i], a = actual[i], diff = e !== a;
+      if (diff) same = false;
+      left += '<div class="' + (diff ? "diff" : "") + '">' + esc(e === undefined ? "（无）" : e) + "</div>";
+      right += '<div class="' + (diff ? "diff" : "") + '">' + esc(a === undefined ? "（无）" : a) + "</div>";
+    }
+    html += '<div class="card"><b>' + esc(fx.name) + '</b> <span class="muted">出处：' + esc(fx.source) + "</span> " +
+      '<span class="' + (same ? "st-pass" : "st-fail") + '">' + (same ? "逐字一致" : "不一致") + "</span>" +
+      '<div class="fx"><div><div class="muted">期望</div><pre>' + left + '</pre></div>' +
+      '<div><div class="muted">实际</div><pre>' + right + "</pre></div></div></div>";
+  });
+  document.getElementById("fx-results").innerHTML = html;
+}
+
+/* =====================================================================
+ * 七、启动
+ * ===================================================================== */
+document.getElementById("ver").textContent = TOOL_VERSION;
+document.getElementById("demo-banner").hidden = !LOAD_DEMO_DATA;
+if (new URLSearchParams(location.search).get("test") === "1") {
+  document.getElementById("test-area").hidden = false;
+  runTests();
+  runFixtures();
+}
+</script>
+</body>
+</html>
