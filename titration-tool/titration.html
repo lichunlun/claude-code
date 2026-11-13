@@ -27,6 +27,51 @@ h2 { font-size: 17px; margin: 20px 0 8px; }
 }
 [hidden] { display: none !important; }
 
+/* 输入表单 */
+form.in { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+form.in .full { grid-column: 1 / -1; }
+.fld { display: block; font-size: 14px; font-weight: 600; }
+.fld select, .fld input[type=number], .fld input[type=date], .fld input[type=text] {
+  display: block; width: 100%; margin-top: 4px; padding: 9px 8px; font-size: 16px;
+  border: 1px solid #888; border-radius: 4px; background: #fff; color: #111;
+}
+.chk { display: inline-flex; align-items: center; gap: 5px; margin: 6px 14px 2px 0; font-size: 15px; font-weight: 400; }
+.chk input { width: 20px; height: 20px; }
+button, a.btn {
+  font-size: 16px; padding: 10px 18px; border-radius: 4px; border: 1px solid #14508c;
+  background: #14508c; color: #fff; cursor: pointer; text-decoration: none; display: inline-block;
+}
+button.sec, a.btn.sec { background: #fff; color: #14508c; }
+@media (max-width: 600px) { form.in { grid-template-columns: 1fr; } }
+
+/* 提示框 */
+.msg { border-left: 5px solid; padding: 8px 12px; margin: 8px 0; border-radius: 3px; }
+.msg.err { border-color: #c00; background: #fde4e4; color: #7a0000; }
+.msg.warn { border-color: #d29500; background: #fff6d6; color: #5c4200; }
+.msg ul { margin: 0; padding-left: 20px; }
+
+/* 输出区：未核对数据的红条与水印（用文字而非背景图，打印时不会丢） */
+.out { position: relative; overflow: hidden; }
+.unv { background: #c00; color: #fff; font-weight: 700; text-align: center; padding: 6px 10px; margin: -12px -12px 10px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.wm { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden;
+  display: flex; flex-wrap: wrap; justify-content: space-around; align-content: space-around; }
+.wm span { transform: rotate(-24deg); color: rgba(200, 0, 0, .15); font-weight: 700; font-size: 20px; white-space: nowrap; padding: 26px 12px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+/* 医生版 */
+.doc-head { font-size: 14px; margin: 2px 0; }
+.scroll { overflow-x: auto; }
+table.doc { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+table.doc th, table.doc td { border: 1px solid #999; padding: 4px 8px; text-align: left; white-space: nowrap; }
+table.doc th { background: #e8eef5; }
+table.doc td:last-child { white-space: normal; }
+table.doc tr.bad td { background: #fde4e4; color: #7a0000; font-weight: 600; white-space: normal; }
+#export-json { width: 100%; height: 180px; margin-top: 8px; font-family: monospace; font-size: 12px; }
+/* 手机上允许单元格折行、缩小留白，让"片数"一列不必横向滚动就能看到 */
+@media (max-width: 600px) { table.doc { font-size: 13px; } table.doc th, table.doc td { white-space: normal; padding: 4px 5px; } }
+@media print { .no-print { display: none !important; } body { background: #fff; } }
+
 /* 测试区 */
 .t-summary { font-weight: 700; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
 .t-summary.ok { background: #e3f4e3; color: #145214; }
@@ -51,10 +96,31 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
   <h1>抗癫痫药物滴定方案生成器</h1>
   <div class="muted">版本 <span id="ver"></span> ｜ 本工具不存储任何数据，刷新页面即清空</div>
 
-  <!-- 输入区与输出区：第 3、4 步实现 -->
-  <section id="app" class="card">
-    <div class="muted">（输入区、医生版、患者版将在第 3、4 步实现。当前已完成第 2 步：四个计算函数 + 测试。网址末尾加 <code>?test=1</code> 查看测试区。）</div>
+  <!-- 输入区。autocomplete=off + 启动时 reset：刷新页面不保留任何已填内容 -->
+  <section class="card no-print">
+    <form id="form" class="in" autocomplete="off">
+      <label class="fld">目标药物
+        <select id="f-drug"></select>
+      </label>
+      <label class="fld">目标剂量（mg/日）
+        <input id="f-dose" type="number" min="0" step="any" inputmode="decimal">
+      </label>
+      <label class="fld">起始日期
+        <input id="f-date" type="date">
+      </label>
+      <label class="fld">滴定方案
+        <select id="f-path"></select>
+      </label>
+      <div class="fld full">合并用药
+        <div id="f-conc"></div>
+        <input id="f-other" type="text" placeholder="其他合并用药（不在上面列表中的，用逗号分隔）">
+      </div>
+      <div class="full"><button type="submit">生成方案</button></div>
+    </form>
   </section>
+
+  <!-- 输出区：医生版（患者版在第 4 步加入） -->
+  <div id="out"></div>
 
   <!-- 页内测试区：仅在 ?test=1 时显示 -->
   <section id="test-area" hidden>
@@ -72,10 +138,14 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
 /* =====================================================================
  * 一、版本与开关
  * ===================================================================== */
-const TOOL_VERSION = "0.2.0-step2";
+const TOOL_VERSION = "0.3.0-step3";
 
 // 是否载入演示数据。正式数据核对填写完成后改为 false，演示药与红色横幅即消失。
 const LOAD_DEMO_DATA = true;
+
+// 每次服药片数超过该值时，在医生版给出警告。null = 不警告。
+// 阈值属于临床/可用性判断，由使用者决定后填入，程序不设默认值。
+const MAX_PIECES_PER_DOSE_WARN = null;
 
 /* =====================================================================
  * 二、正式药物数据（由使用者对照药品说明书手工填写）
@@ -191,6 +261,14 @@ function isPos(x) { return typeof x === "number" && isFinite(x) && x > 0; }
 function r4(x) { return Math.round(x * 1e4) / 1e4; }            // 消除浮点尾差
 function fmtNum(x) { return String(r4(x)); }
 function gcd(a, b) { while (b) { const t = a % b; a = b; b = t; } return a; }
+// "YYYY-MM-DD" → UTC 零点毫秒数；格式不对或日期不存在（如 2 月 30 日）返回 NaN
+function isoToUTC(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || "");
+  const t = m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN;
+  return !isNaN(t) && new Date(t).toISOString().slice(0, 10) === str ? t : NaN;
+}
+// 日期加减整天。一律按 UTC 零点计算，避开时区和夏令时
+function addDays(iso, n) { return new Date(isoToUTC(iso) + n * 86400000).toISOString().slice(0, 10); }
 // mg → 整数单位（千分之一 mg），避免小数剂量的浮点误差；精度超过 3 位小数返回 null
 function toUnits(mg) { const u = Math.round(mg * 1000); return Math.abs(u - mg * 1000) < 1e-6 ? u : null; }
 
@@ -416,11 +494,7 @@ function toCalendar(schedule, startDate, days) {
   const fail = error => ({ ok: false, days: [], error });
   if (!Array.isArray(schedule) || !schedule.length) return fail("没有可排的滴定序列");
   if (!Number.isInteger(days) || days < 1 || days > 3660) return fail("天数非法");
-  // 日期一律按 UTC 零点做整天加减，避开时区和夏令时
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate || "");
-  const base = m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN;
-  const iso = t => new Date(t).toISOString().slice(0, 10);
-  if (isNaN(base) || iso(base) !== startDate) return fail("起始日期非法");
+  if (isNaN(isoToUTC(startDate))) return fail("起始日期非法");
   // 只要有一段凑不出片，就整体拒绝，绝不给患者一张有缺口的日历
   for (const s of schedule) {
     if (!s.fit || !s.fit.ok) return fail("第 " + s.weekFrom + " 周起的剂量无法凑片：" + ((s.fit && s.fit.reason) || "缺少凑片结果"));
@@ -442,29 +516,98 @@ function toCalendar(schedule, startDate, days) {
     });
     const isChangeDay = dayInSeg === 0 && !!prev &&
       (prev.dailyDose !== s.dailyDose || prev.dosesPerDay !== s.dosesPerDay || prev.fit.mode !== s.fit.mode);
-    out.push({ date: iso(base + i * 86400000), dayNo: i + 1, week, mg: r4(mg), slots, skip, isChangeDay });
+    out.push({ date: addDays(startDate, i), dayNo: i + 1, week, mg: r4(mg), slots, skip, isChangeDay });
   }
   return { ok: true, days: out, error: "" };
 }
 
 /**
- * 把带凑片结果的周序列格式化成规范文本行（医生版表格与 FIXTURES 逐字比对共用）。
+ * 一段剂量 → 四个单元格文本 [周次, 日剂量, 频次, 每次片数]。
+ * 医生版表格与 formatScheduleLines 共用，保证屏幕显示与 FIXTURES 比对用的文本逐字相同。
+ */
+function segmentCells(s) {
+  const weeks = s.weekTo === null ? "第" + s.weekFrom + "周起"
+    : s.weekTo === s.weekFrom ? "第" + s.weekFrom + "周" : "第" + s.weekFrom + "–" + s.weekTo + "周";
+  const f = s.fit;
+  if (!f || !f.ok)
+    return [weeks, "日剂量 " + fmtNum(s.dailyDose) + " mg", "每日 " + s.dosesPerDay + " 次", "无法凑片：" + ((f && f.reason) || "缺少凑片结果")];
+  const alt = f.mode === "alternateDay";
+  return [weeks,
+    (alt ? "折合日剂量 " : "日剂量 ") + fmtNum(s.dailyDose) + " mg",
+    alt ? "隔日 1 次" : "每日 " + s.dosesPerDay + " 次",
+    "每次 " + f.doses[0].pieces.map(p => fmtNum(p.strength) + " mg 片 × " + fmtNum(p.count)).join(" + ")];
+}
+
+/**
+ * 把带凑片结果的周序列格式化成规范文本行（FIXTURES 逐字比对用）。
  * @returns {string[]} 例："第1–2周｜日剂量 10 mg｜每日 1 次｜每次 10 mg 片 × 1"
  */
-function formatScheduleLines(schedule) {
-  return schedule.map(s => {
-    const weeks = s.weekTo === null ? "第" + s.weekFrom + "周起"
-      : s.weekTo === s.weekFrom ? "第" + s.weekFrom + "周" : "第" + s.weekFrom + "–" + s.weekTo + "周";
-    const f = s.fit;
-    if (!f || !f.ok)
-      return [weeks, "日剂量 " + fmtNum(s.dailyDose) + " mg", "每日 " + s.dosesPerDay + " 次", "无法凑片：" + ((f && f.reason) || "缺少凑片结果")].join("｜");
-    const alt = f.mode === "alternateDay";
-    return [weeks,
-      (alt ? "折合日剂量 " : "日剂量 ") + fmtNum(s.dailyDose) + " mg",
-      alt ? "隔日 1 次" : "每日 " + s.dosesPerDay + " 次",
-      "每次 " + f.doses[0].pieces.map(p => fmtNum(p.strength) + " mg 片 × " + fmtNum(p.count)).join(" + ")
-    ].join("｜");
+function formatScheduleLines(schedule) { return schedule.map(s => segmentCells(s).join("｜")); }
+
+/**
+ * 组装：把四个核心函数串成一次完整计算（仍是纯函数）。
+ * @param {{drugId:string, targetDose:number, concomitant:string[], startDate?:string, manualPathIndex?:number|null}} input
+ *        manualPathIndex：医生手动指定的方案在 drug.titrationPaths 中的下标；null/未给 = 自动判定
+ * @param {{maxPiecesWarn:number|null}} [opts]
+ * @returns ok=true 时含 drug/input/auto/path/scenario/basis/manual/segments/lines/warnings/allFit/unverified；
+ *          ok=false 时含 error，needsManual=true 表示需医生手动选方案
+ */
+function buildPlan(input, drugs, classes, opts) {
+  const fail = (error, extra) => Object.assign({ ok: false, needsManual: false, error }, extra);
+  const drug = drugs.find(d => d.id === input.drugId);
+  if (!drug) return fail("请选择目标药物");
+  if (drug.weightBased === true) return fail(drug.nameCn + "按体重给药，本版不支持");
+  if (drug.weightBased !== false) return fail(drug.nameCn + "的「是否按体重给药」数据未填写，无法生成");
+  if (!isPos(input.targetDose)) return fail("请填写目标剂量（mg/日）");
+
+  const auto = resolveScenario(input.concomitant, classes, drug);
+  let path = auto.path, basis = auto.basis, manual = false;
+  if (Number.isInteger(input.manualPathIndex)) {
+    path = drug.titrationPaths[input.manualPathIndex];
+    if (!path) return fail("所选滴定方案不存在");
+    manual = true;
+    basis = "医生人工选择「" + path.label + "」方案（程序自动判定结果：" + auto.basis + "）";
+  } else if (auto.needsManual) {
+    return fail(auto.basis, { needsManual: true, auto });
+  }
+
+  const sch = expandSchedule(path, input.targetDose);
+  if (!sch.ok) return fail(sch.error);
+  const segments = sch.segments.map(s => Object.assign({}, s, {
+    fit: fitToTablets(s.dailyDose, s.dosesPerDay, drug.strengths, drug.splittable, drug.allowAlternateDay)
+  }));
+  const warnings = sch.warnings.slice();
+  const maxWarn = opts && opts.maxPiecesWarn;
+  segments.forEach(s => {
+    const from = "第 " + s.weekFrom + " 周起";
+    if (!s.fit.ok) { warnings.push(from + "：" + s.fit.reason); return; }
+    const n = s.fit.doses[0].pieces.reduce((a, p) => a + p.count, 0);
+    if (isPos(maxWarn) && n > maxWarn) warnings.push(from + "每次需服 " + fmtNum(n) + " 片，超过提醒阈值 " + fmtNum(maxWarn) + " 片");
   });
+  return {
+    ok: true, drug, input, auto, path, scenario: path.scenario, basis, manual,
+    segments, lines: formatScheduleLines(segments), warnings,
+    allFit: segments.every(s => s.fit.ok),  // false = 有剂量段凑不出片，不得出患者版
+    unverified: drug.dataVerified !== true   // true = 数据未核对，输出必须带水印
+  };
+}
+
+/**
+ * 导出用的结构化数据（纯函数；只在用户点击"导出"时调用，不自动保存）。
+ * 不含任何患者身份信息——本工具本来也不收集。
+ */
+function exportData(plan, generatedAt) {
+  const d = plan.drug;
+  return {
+    tool: "抗癫痫药物滴定方案生成器", toolVersion: TOOL_VERSION, generatedAt,
+    dataVerified: d.dataVerified === true, isDemoData: !!d.isDemo,
+    input: { drugId: d.id, drugNameCn: d.nameCn, targetDose: plan.input.targetDose,
+             concomitant: plan.input.concomitant.slice(), startDate: plan.input.startDate || null },
+    scenario: { scenario: plan.scenario, pathLabel: plan.path.label, selectedBy: plan.manual ? "manual" : "auto",
+                basis: plan.basis, autoResult: { scenario: plan.auto.scenario, needsManual: plan.auto.needsManual, matched: plan.auto.matched } },
+    schedule: plan.segments, lines: plan.lines, warnings: plan.warnings, allFit: plan.allFit,
+    sources: d.sources
+  };
 }
 
 /* =====================================================================
@@ -722,6 +865,42 @@ test("文本行", "演示药A 单药目标 30：第 5 周起每次 15mg 凑不�
   eq([lines.length, lines[2].includes("无法凑片")], [3, true]);
 });
 
+/* ---------- buildPlan / exportData ---------- */
+const planOf = (drugId, concomitant, targetDose, manualPathIndex, opts) =>
+  buildPlan({ drugId, concomitant, targetDose, startDate: "2026-03-01", manualPathIndex }, DEMO_DRUGS, C, opts);
+test("组装", "演示药A 单药目标 40：全流程输出，并标记为未核对数据", () => {
+  const r = planOf("demoA", [], 40);
+  eq([r.ok, r.allFit, r.unverified, r.manual, r.lines], [true, true, true, false, DEMO_FIXTURES[0].expectedLines]);
+});
+test("组装", "诱导剂+抑制剂并存且未手动选方案 → 不生成，要求人工选择", () => {
+  const r = planOf("demoA", ["demoInducerX", "demoInhibitorY"], 40);
+  eq([r.ok, r.needsManual], [false, true]);
+});
+test("组装", "医生手动选方案后生成，依据中同时记录人工选择与自动判定结果", () => {
+  const r = planOf("demoA", ["demoInducerX", "demoInhibitorY"], 40, 0);
+  eq([r.ok, r.manual, r.scenario, r.basis.includes("医生人工选择"), r.basis.includes("需人工判断")], [true, true, "monotherapy", true, true]);
+});
+test("组装", "按体重给药或该项未填 → 不生成", () => {
+  const mk = wb => buildPlan({ drugId: "x", concomitant: [], targetDose: 40 }, [Object.assign({}, A, { id: "x", weightBased: wb })], C).ok;
+  eq([mk(true), mk(null)], [false, false]);
+});
+test("组装", "有剂量段凑不出片：仍给出医生版但 allFit=false 且有警告", () => {
+  const r = planOf("demoA", [], 30);
+  eq([r.ok, r.allFit, r.warnings.some(w => w.includes("无法用现有规格凑出"))], [true, false, true]);
+});
+test("组装", "每次片数提醒：阈值为 null 不提醒，设了阈值才提醒", () => {
+  const has = opts => planOf("demoA", [], 80, null, opts).warnings.some(w => w.includes("超过提醒阈值"));
+  eq([has(undefined), has({ maxPiecesWarn: null }), has({ maxPiecesWarn: 2 }), has({ maxPiecesWarn: 3 })], [false, false, true, false]); // 60mg 分 2 次 = 每次 3 片 10mg
+});
+test("组装", "未选药、未填剂量 → 不生成", () => {
+  eq([planOf("", [], 40).ok, planOf("demoA", [], NaN).ok], [false, false]);
+});
+test("导出", "结构化数据可序列化，含版本号、核对状态、依据与逐周序列，不含整份药物数据", () => {
+  const x = JSON.parse(JSON.stringify(exportData(planOf("demoA", ["demoInhibitorY"], 20), "2026-03-01T00:00:00.000Z")));
+  eq([x.toolVersion, x.dataVerified, x.isDemoData, x.scenario.scenario, x.scenario.selectedBy, x.schedule.length, x.schedule[0].fit.mode, "drug" in x, "titrationPaths" in x],
+     [TOOL_VERSION, false, true, "withInhibitor", "auto", 3, "alternateDay", false, false]);
+});
+
 /* ---------- FIXTURES：说明书标准滴定方案（待使用者填入），程序输出须与之逐字一致 ----------
  * 每条格式：
  * { name: "说明书××方案",            // 显示名
@@ -742,18 +921,11 @@ const DEMO_FIXTURES = [{
   ]
 }];
 
-// 跑一条 fixture，返回实际输出行（任何一步失败都如实写进输出，不吞错）
+// 跑一条 fixture，返回实际输出行（失败原因也如实写进输出，不吞错）
 function runFixture(fx) {
-  const drug = ALL_DRUGS.find(d => d.id === fx.drugId);
-  if (!drug) return ["找不到药物：" + fx.drugId];
   try {
-    const sc = resolveScenario(fx.concomitant, ACTIVE_CLASSES, drug);
-    if (sc.needsManual) return ["需人工判断：" + sc.basis];
-    const sch = expandSchedule(sc.path, fx.targetDose);
-    if (!sch.ok) return ["无法生成：" + sch.error];
-    return formatScheduleLines(sch.segments.map(s => Object.assign({}, s, {
-      fit: fitToTablets(s.dailyDose, s.dosesPerDay, drug.strengths, drug.splittable, drug.allowAlternateDay)
-    })));
+    const r = buildPlan({ drugId: fx.drugId, concomitant: fx.concomitant, targetDose: fx.targetDose }, ALL_DRUGS, ACTIVE_CLASSES);
+    return r.ok ? r.lines : [(r.needsManual ? "需人工判断：" : "无法生成：") + r.error];
   } catch (e) {
     return ["出错：" + e.message];
   }
@@ -801,10 +973,110 @@ function runFixtures() {
 }
 
 /* =====================================================================
- * 七、启动
+ * 七、界面（只负责读表单、调用计算核心、把结果画出来）
+ * ===================================================================== */
+const $ = id => document.getElementById(id);
+let currentPlan = null; // 当前方案只放在内存变量里，刷新即失；不写入任何浏览器存储
+
+function initForm() {
+  $("form").reset();
+  $("f-drug").innerHTML = '<option value="">请选择</option>' + ALL_DRUGS.map(d =>
+    '<option value="' + esc(d.id) + '">' + esc(d.nameCn) + (d.nameEn ? "（" + esc(d.nameEn) + "）" : "") +
+    (d.dataVerified === true ? "" : " 〔未核对〕") + "</option>").join("");
+  const all = ACTIVE_CLASSES.inducers.concat(ACTIVE_CLASSES.inhibitors, ACTIVE_CLASSES.neutral);
+  $("f-conc").innerHTML = all.length
+    ? all.map(c => '<label class="chk"><input type="checkbox" value="' + esc(c.id) + '">' + esc(c.nameCn) + "</label>").join("")
+    : '<span class="muted">药物分类表尚未填写</span>';
+  const now = new Date(), pad = n => String(n).padStart(2, "0");
+  $("f-date").value = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()); // 默认今天（本地日期）
+  $("f-drug").addEventListener("change", fillPaths);
+  $("form").addEventListener("submit", e => { e.preventDefault(); generate(); });
+  $("out").addEventListener("click", e => { if (e.target.id === "btn-export") doExport(); });
+  fillPaths();
+}
+
+// "滴定方案"下拉：默认自动判定，也可由医生手动指定某条方案
+function fillPaths() {
+  const drug = ALL_DRUGS.find(d => d.id === $("f-drug").value);
+  $("f-path").innerHTML = '<option value="">自动判定（按合并用药）</option>' + (drug ? drug.titrationPaths.map((p, i) =>
+    '<option value="' + i + '">手动：' + esc(p.label || p.scenario) + "</option>").join("") : "");
+}
+
+function readInput() {
+  const other = $("f-other").value.split(/[,，、;；]/).map(x => x.trim()).filter(Boolean);
+  const checked = Array.from($("f-conc").querySelectorAll("input:checked")).map(x => x.value);
+  return {
+    drugId: $("f-drug").value,
+    targetDose: parseFloat($("f-dose").value),
+    concomitant: checked.concat(other),
+    startDate: $("f-date").value,
+    manualPathIndex: $("f-path").value === "" ? null : +$("f-path").value
+  };
+}
+
+function generate() {
+  const input = readInput();
+  let plan = buildPlan(input, ALL_DRUGS, ACTIVE_CLASSES, { maxPiecesWarn: MAX_PIECES_PER_DOSE_WARN });
+  if (plan.ok && isNaN(isoToUTC(input.startDate))) plan = { ok: false, needsManual: false, error: "请填写起始日期" };
+  currentPlan = plan.ok ? plan : null;
+  if (plan.ok) { $("out").innerHTML = renderDoctor(plan); return; }
+  $("out").innerHTML = '<div class="msg ' + (plan.needsManual ? "warn" : "err") + '">' +
+    (plan.needsManual ? "<b>无法自动判定：</b>" + esc(plan.error) + "。请在上方「滴定方案」中手动选择一条方案后重新生成。" : esc(plan.error)) + "</div>";
+}
+
+// 未核对数据：红条 + 铺满输出区的文字水印
+function unverifiedMarks(drug) {
+  const strip = drug.isDemo ? "⚠ 当前载入演示数据，数值为虚构，严禁用于临床" : "⚠ 所选药物数据尚未核对，严禁用于临床";
+  const word = drug.isDemo ? "演示数据 · 严禁临床使用" : "未核对数据 · 严禁临床使用";
+  return '<div class="unv">' + strip + '</div><div class="wm" aria-hidden="true">' + ("<span>" + word + "</span>").repeat(60) + "</div>";
+}
+
+function renderDoctor(plan) {
+  const d = plan.drug, inp = plan.input, md = iso => iso.slice(5).replace("-", "/");
+  const nameOf = id => { const c = ACTIVE_CLASSES.inducers.concat(ACTIVE_CLASSES.inhibitors, ACTIVE_CLASSES.neutral).find(x => x.id === id); return c ? c.nameCn : id; };
+  const rows = plan.segments.map(s => {
+    const c = segmentCells(s), from = addDays(inp.startDate, (s.weekFrom - 1) * 7);
+    const dates = s.weekTo === null ? md(from) + " 起" : md(from) + "–" + md(addDays(inp.startDate, s.weekTo * 7 - 1));
+    return '<tr class="' + (s.fit.ok ? "" : "bad") + '"><td>' + esc(c[0]) + "</td><td>" + dates + "</td><td>" + esc(c[1]) +
+      "</td><td>" + esc(c[2]) + "</td><td>" + esc(c[3]) + "</td><td>" + esc(s.note) + "</td></tr>";
+  }).join("");
+  const list = (items, cls, title) => items.length
+    ? '<div class="msg ' + cls + '"><b>' + title + "</b><ul>" + items.map(w => "<li>" + esc(w) + "</li>").join("") + "</ul></div>" : "";
+  const src = (d.sources || []).map(x => [x.type, x.name, x.version, x.date].filter(Boolean).join(" · ")).filter(Boolean).join("；") || "未填写";
+  return '<section class="card out" id="out-doctor">' + (plan.unverified ? unverifiedMarks(d) : "") +
+    "<h2 style=\"margin-top:0\">医生版 · 滴定方案</h2>" +
+    '<div class="doc-head"><b>' + esc(d.nameCn) + "</b>" + (d.nameEn ? "（" + esc(d.nameEn) + "）" : "") +
+      "｜目标 " + fmtNum(inp.targetDose) + " mg/日｜起始 " + esc(inp.startDate) +
+      "｜合并用药：" + (inp.concomitant.length ? esc(inp.concomitant.map(nameOf).join("、")) : "无") + "</div>" +
+    '<div class="doc-head"><b>情境判定：</b>' + esc(plan.basis) + "</div>" +
+    '<div class="scroll"><table class="doc"><tr><th>周次</th><th>日期</th><th>剂量</th><th>频次</th><th>片数</th><th>备注</th></tr>' + rows + "</table></div>" +
+    list(plan.warnings, plan.allFit ? "warn" : "err", "请注意：") +
+    list(d.cautions || [], "warn", "注意事项：") +
+    '<div class="muted">数据来源：' + esc(src) + "｜数据核对状态：" + (plan.unverified ? "未核对" : "已核对") +
+      "｜工具版本 " + TOOL_VERSION + "</div>" +
+    '<div class="no-print" style="margin-top:10px"><button type="button" class="sec" id="btn-export">导出结构化数据（JSON）</button> ' +
+      '<a class="btn sec" id="export-dl" hidden>下载 .json 文件</a>' +
+      '<textarea id="export-json" readonly hidden></textarea></div>' +
+    "</section>";
+}
+
+// 导出：只在点击时现场生成，显示在文本框并提供下载链接；不自动保存到任何地方
+function doExport() {
+  if (!currentPlan) return;
+  const json = JSON.stringify(exportData(currentPlan, new Date().toISOString()), null, 2);
+  $("export-json").value = json; $("export-json").hidden = false;
+  const a = $("export-dl");
+  a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+  a.download = "titration-" + currentPlan.drug.id + "-" + currentPlan.input.startDate + ".json";
+  a.hidden = false;
+}
+
+/* =====================================================================
+ * 八、启动
  * ===================================================================== */
 document.getElementById("ver").textContent = TOOL_VERSION;
 document.getElementById("demo-banner").hidden = !LOAD_DEMO_DATA;
+initForm();
 if (new URLSearchParams(location.search).get("test") === "1") {
   document.getElementById("test-area").hidden = false;
   runTests();
