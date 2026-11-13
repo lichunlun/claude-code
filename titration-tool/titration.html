@@ -70,7 +70,71 @@ table.doc tr.bad td { background: #fde4e4; color: #7a0000; font-weight: 600; whi
 #export-json { width: 100%; height: 180px; margin-top: 8px; font-family: monospace; font-size: 12px; }
 /* 手机上允许单元格折行、缩小留白，让"片数"一列不必横向滚动就能看到 */
 @media (max-width: 600px) { table.doc { font-size: 13px; } table.doc th, table.doc td { white-space: normal; padding: 4px 5px; } }
-@media print { .no-print { display: none !important; } body { background: #fff; } }
+
+/* ========== 患者版：主视觉是"什么时候、吃几片"，mg 数字次要；大字、黑白高对比 ========== */
+.pt { color: #000; --n: 2; }
+.pt-title { font-size: 26px; font-weight: 800; }
+.pt-title span { font-size: 19px; font-weight: 600; margin-left: 10px; }
+.pt-sum { font-size: 21px; font-weight: 700; margin: 6px 0; }
+.pt-legend { font-size: 17px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-bottom: 8px; }
+.pt-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pt-rows { border-top: 2px solid #000; }
+.pt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px; border: 2px solid #000; border-top: none; }
+.pt-date { flex: none; width: 4.7em; font-size: 21px; font-weight: 800; line-height: 1.2; }
+.pt-date small { display: block; font-size: 15px; font-weight: 500; }
+.pt-slots { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 6px; font-size: 23px; }
+.pt-slot { display: flex; flex-wrap: wrap; align-items: center; gap: .15em .3em; font-weight: 800; }
+.pt-slot .when { font-size: .75em; font-weight: 600; }
+.pills { display: inline-flex; gap: .1em; }
+.pill { width: 1.25em; height: 1.25em; flex: none; }
+.pt-skip { grid-column: 1 / -1; font-size: .85em; font-weight: 700; color: #333; }
+/* 加量日：黄底 + 粗黑框 + 文字标注（黑白打印或不打印背景时，粗框和文字仍在） */
+.pt-row.chg { background: #ffe680; border: 4px solid #000; margin-top: -2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pt-hint { flex: 1 0 100%; order: -1; font-size: 17px; font-weight: 800; }
+.pt-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; margin-top: 16px; font-size: 17px; }
+.pt-foot div { display: flex; align-items: flex-end; gap: 6px; white-space: nowrap; }
+.pt-foot i { flex: 1; border-bottom: 1.5px solid #000; height: 1.7em; }
+.pt-ver { font-size: 11px; color: #555; margin-top: 8px; }
+@media (min-width: 601px) { .pt-row { flex-wrap: nowrap; } .pt-hint { flex: 0 0 9.5em; order: 0; } }
+.nw { white-space: nowrap; }
+/* 手机：每个时段单独一行，"几毫克几片"不在中间断开 */
+@media (max-width: 600px) { .pt-foot { grid-template-columns: 1fr; } .pt-hint:empty { display: none; } .pt-slots { grid-template-columns: 1fr; } }
+
+/* ========== 打印（A4）。患者版固定占满一页：各行平分剩余高度，行内不折行，
+   "时段"区字号 --pfs 由 printLayout 按内容密度算出，保证单页完整 ========== */
+@page { size: A4; margin: 10mm; }
+@media print {
+  .no-print, body.print-patient #out-doctor, body.print-doctor #out-patient,
+  body.print-patient .banner, body.print-doctor .banner { display: none !important; }
+  body { background: #fff; }
+  main { max-width: none; padding: 0; }
+  .card { border: none; border-radius: 0; margin: 0; }
+  #out-patient { break-before: page; height: 275mm; display: flex; flex-direction: column; }
+  body.print-patient #out-patient { break-before: auto; }
+  .pt-rows { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .pt-row { flex: 1 1 auto; flex-wrap: nowrap; padding: 0 3mm; gap: 0 3mm; }
+  .pt-date { width: var(--datew); }
+  .pt-slots { font-size: var(--pfs); grid-template-columns: repeat(var(--n), 1fr); }
+  .pt-slot { flex-wrap: nowrap; white-space: nowrap; }
+  /* 叠排：图形一行、文字一行，用行高换宽度（仅 14 天版行高够用） */
+  .pt.stk .pt-slot { flex-wrap: wrap; row-gap: 0; line-height: 1.1; }
+  .pt.stk .pt-slot > span:last-child { flex: 0 0 100%; }
+  .pt-hint, .pt-hint:empty { display: block; flex: 0 0 var(--hintw); order: 0; line-height: 1.15; }
+  .pt-foot { grid-template-columns: 1fr 1fr; font-size: 12pt; gap: 4mm 10mm; margin-top: 4mm; }
+  .pt-ver { font-size: 7pt; margin-top: 2mm; }
+  /* 14 天版：每行约 14 mm */
+  .pt.d14 { --datew: 34mm; --hintw: 38mm; }
+  .pt.d14 .pt-title { font-size: 22pt; } .pt.d14 .pt-sum { font-size: 16pt; } .pt.d14 .pt-legend { font-size: 13pt; }
+  .pt.d14 .pt-date { font-size: 17pt; } .pt.d14 .pt-date small { font-size: 11pt; }
+  .pt.d14 .pt-hint { font-size: 11pt; }
+  /* 28 天版：每行约 7 mm，星期与日期同行 */
+  .pt.d28 { --datew: 33mm; --hintw: 30mm; }
+  .pt.d28 .pt-title { font-size: 18pt; } .pt.d28 .pt-sum { font-size: 14pt; margin: 1mm 0; }
+  .pt.d28 .pt-legend { font-size: 11pt; margin-bottom: 1.5mm; }
+  .pt.d28 .pt-row { border-width: 1px; }
+  .pt.d28 .pt-date { font-size: 12pt; white-space: nowrap; } .pt.d28 .pt-date small { display: inline; font-size: 9pt; margin-left: 1.5mm; }
+  .pt.d28 .pt-hint { font-size: 8.5pt; }
+}
 
 /* 测试区 */
 .t-summary { font-weight: 700; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
@@ -93,8 +157,8 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
 <div id="demo-banner" class="banner" hidden>⚠ 当前载入演示数据，数值为虚构，严禁用于临床</div>
 
 <main>
-  <h1>抗癫痫药物滴定方案生成器</h1>
-  <div class="muted">版本 <span id="ver"></span> ｜ 本工具不存储任何数据，刷新页面即清空</div>
+  <h1 class="no-print">抗癫痫药物滴定方案生成器</h1>
+  <div class="muted no-print">版本 <span id="ver"></span> ｜ 本工具不存储任何数据，刷新页面即清空</div>
 
   <!-- 输入区。autocomplete=off + 启动时 reset：刷新页面不保留任何已填内容 -->
   <section class="card no-print">
@@ -111,6 +175,12 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
       <label class="fld">滴定方案
         <select id="f-path"></select>
       </label>
+      <label class="fld">患者版天数（一张 A4）
+        <select id="f-days"><option value="14">14 天（2 周，字最大）</option><option value="28">28 天（4 周）</option></select>
+      </label>
+      <label class="fld">患者版从第几周开始
+        <input id="f-from" type="number" min="1" step="1" value="1" inputmode="numeric">
+      </label>
       <div class="fld full">合并用药
         <div id="f-conc"></div>
         <input id="f-other" type="text" placeholder="其他合并用药（不在上面列表中的，用逗号分隔）">
@@ -119,7 +189,7 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
     </form>
   </section>
 
-  <!-- 输出区：医生版（患者版在第 4 步加入） -->
+  <!-- 输出区：医生版 + 患者版 -->
   <div id="out"></div>
 
   <!-- 页内测试区：仅在 ?test=1 时显示 -->
@@ -138,7 +208,7 @@ table.t td:nth-child(1), table.t td:nth-child(3) { white-space: nowrap; }
 /* =====================================================================
  * 一、版本与开关
  * ===================================================================== */
-const TOOL_VERSION = "0.3.0-step3";
+const TOOL_VERSION = "0.4.0";
 
 // 是否载入演示数据。正式数据核对填写完成后改为 false，演示药与红色横幅即消失。
 const LOAD_DEMO_DATA = true;
@@ -146,6 +216,9 @@ const LOAD_DEMO_DATA = true;
 // 每次服药片数超过该值时，在医生版给出警告。null = 不警告。
 // 阈值属于临床/可用性判断，由使用者决定后填入，程序不设默认值。
 const MAX_PIECES_PER_DOSE_WARN = null;
+
+// 患者版打印后"吃几片"那部分的字号低于该值（pt）时，在屏幕上提醒医生。属于可读性阈值，可按需要调整。
+const MIN_PRINT_PT_WARN = 12;
 
 /* =====================================================================
  * 二、正式药物数据（由使用者对照药品说明书手工填写）
@@ -479,6 +552,7 @@ function minPieces(dose, coins) {
  *     date: string,          // "YYYY-MM-DD"
  *     dayNo: number,         // 第几天（从 1 起）
  *     week: number,          // 第几周（从 1 起）
+ *     seg: number,           // 当天所属剂量段在 schedule 中的下标
  *     mg: number,            // 当天实际服用的总量(mg)，停药日为 0
  *     slots: {"早":Array|null, "中":Array|null, "晚":Array|null}, // 各时段的 pieces，不服为 null
  *     skip: boolean,         // 隔日方案中"今天不吃药"的那天
@@ -516,7 +590,7 @@ function toCalendar(schedule, startDate, days) {
     });
     const isChangeDay = dayInSeg === 0 && !!prev &&
       (prev.dailyDose !== s.dailyDose || prev.dosesPerDay !== s.dosesPerDay || prev.fit.mode !== s.fit.mode);
-    out.push({ date: addDays(startDate, i), dayNo: i + 1, week, mg: r4(mg), slots, skip, isChangeDay });
+    out.push({ date: addDays(startDate, i), dayNo: i + 1, week, seg: k, mg: r4(mg), slots, skip, isChangeDay });
   }
   return { ok: true, days: out, error: "" };
 }
@@ -596,7 +670,7 @@ function buildPlan(input, drugs, classes, opts) {
  * 导出用的结构化数据（纯函数；只在用户点击"导出"时调用，不自动保存）。
  * 不含任何患者身份信息——本工具本来也不收集。
  */
-function exportData(plan, generatedAt) {
+function exportData(plan, generatedAt, sheet) {
   const d = plan.drug;
   return {
     tool: "抗癫痫药物滴定方案生成器", toolVersion: TOOL_VERSION, generatedAt,
@@ -606,8 +680,80 @@ function exportData(plan, generatedAt) {
     scenario: { scenario: plan.scenario, pathLabel: plan.path.label, selectedBy: plan.manual ? "manual" : "auto",
                 basis: plan.basis, autoResult: { scenario: plan.auto.scenario, needsManual: plan.auto.needsManual, matched: plan.auto.matched } },
     schedule: plan.segments, lines: plan.lines, warnings: plan.warnings, allFit: plan.allFit,
+    patientSheet: sheet && sheet.ok ? { from: sheet.from, to: sheet.to, days: sheet.rows.length, rows: sheet.rows } : null,
     sources: d.sources
   };
+}
+
+/**
+ * 患者版一张表的内容：从第 fromWeek 周的第一天起连续 days 天（纯函数）。
+ * @returns {{ok:boolean, error:string,
+ *   rows: Array,          // toCalendar 的每日记录 + hints（加量日的提示语）
+ *   slots: string[],      // 这张表里用到的时段，如 ["早","晚"]
+ *   strengths: number[],  // 这张表里用到的药片规格（从小到大）
+ *   usesHalf: boolean, from: string, to: string}}
+ */
+function patientSheet(segments, startDate, fromWeek, days) {
+  const fail = error => ({ ok: false, error, rows: [], slots: [], strengths: [], usesHalf: false, from: "", to: "" });
+  if (!Number.isInteger(fromWeek) || fromWeek < 1 || fromWeek > 520) return fail("患者版起始周非法");
+  if (!Number.isInteger(days) || days < 1) return fail("患者版天数非法");
+  const skipDays = (fromWeek - 1) * 7;
+  const cal = toCalendar(segments, startDate, skipDays + days);
+  if (!cal.ok) return fail(cal.error);
+  const strengthsOf = s => Array.from(new Set(s.fit.doses[0].pieces.map(p => p.strength))).sort((a, b) => a - b);
+  const rows = cal.days.slice(skipDays).map(d => {
+    const hints = [];
+    if (d.isChangeDay) {
+      const cur = segments[d.seg], prev = segments[d.seg - 1], a = strengthsOf(cur);
+      hints.push(cur.dailyDose > prev.dailyDose ? "今天开始加量" : "今天起吃法改变");
+      if (a.join() !== strengthsOf(prev).join()) hints.push("改用 " + a.map(fmtNum).join("、") + " 毫克的药片");
+    }
+    return Object.assign({}, d, { hints });
+  });
+  const pieces = [];
+  rows.forEach(r => SLOT_KEYS.forEach(k => { if (r.slots[k]) pieces.push.apply(pieces, r.slots[k]); }));
+  return {
+    ok: true, error: "", rows,
+    slots: SLOT_KEYS.filter(k => rows.some(r => r.slots[k])),
+    strengths: Array.from(new Set(pieces.map(p => p.strength))).sort((a, b) => a - b),
+    usesHalf: pieces.some(p => p.count % 1 !== 0),
+    from: rows[0].date, to: rows[rows.length - 1].date
+  };
+}
+const SLOT_KEYS = ["早", "中", "晚"];
+
+// 片数的患者说法：0.5 → "半片"，1 → "1 片"，1.5 → "1 片半"
+function countText(n) { const w = Math.floor(n); return w === 0 ? "半片" : w + " 片" + (n % 1 !== 0 ? "半" : ""); }
+// 一次服药的文字。整张表只用一种规格时只说片数；用到多种规格时必须说清是哪种药片
+function slotText(pieces, multi) {
+  return multi ? pieces.map(p => fmtNum(p.strength) + "毫克 " + countText(p.count)).join(" 加 ")
+               : countText(pieces.reduce((a, p) => a + p.count, 0));
+}
+// 一组药片要画几个图形：整片几个圆 + 半片一个半圆；超过 4 个只画 1 个，数量由文字表达
+function glyphCount(count) { const n = Math.ceil(count); return n > 4 ? 1 : n; }
+
+/**
+ * 打印时"时段"区的排法和字号（纯函数）。打印版行内不折行，内容越密（时段多、片数多、多种规格）字越小，
+ * 以保证不横向溢出、整张表留在一页 A4 内。14 天版行高充裕，可改为"图形一行、文字一行"的叠排以换取更大字号。
+ * 宽度按 em 估算：汉字 1em，数字和空格约 0.58em。
+ * @returns {{stacked:boolean, pt:number}} 是否叠排、字号(pt)
+ */
+function printLayout(sheet, days) {
+  const multi = sheet.strengths.length > 1, hasHint = sheet.rows.some(r => r.hints.length), n = sheet.slots.length;
+  const em = str => Array.from(str).reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.58), 0);
+  let one = em("今天不吃药") / n, two = one; // 单行排 / 叠排 时每个时段所需宽度(em)；停药日那行横跨所有时段
+  sheet.rows.forEach(r => SLOT_KEYS.forEach(k => {
+    const p = r.slots[k];
+    if (!p) return;
+    const g = 1.8 + p.reduce((a, x) => a + glyphCount(x.count) * 1.35, 0), t = em(slotText(p, multi));
+    one = Math.max(one, g + 0.3 + t + 0.8);
+    two = Math.max(two, Math.max(g, t) + 0.8);
+  }));
+  const availMm = days <= 14 ? (hasHint ? 102 : 140) : (hasHint ? 112 : 142); // A4 减去页边、日期列、提示列
+  const fit = (need, basePt) => Math.floor(Math.min(basePt, availMm / (need * n * 0.3528)) * 10) / 10; // 1pt = 0.3528mm
+  const single = fit(one, days <= 14 ? 20 : 13);
+  const stackedPt = days <= 14 ? fit(two, 15) : 0; // 叠排两行，基准字号 15pt；28 天版行高不够，不叠排
+  return stackedPt > single ? { stacked: true, pt: stackedPt } : { stacked: false, pt: single };
 }
 
 /* =====================================================================
@@ -901,6 +1047,47 @@ test("导出", "结构化数据可序列化，含版本号、核对状态、依�
      [TOOL_VERSION, false, true, "withInhibitor", "auto", 3, "alternateDay", false, false]);
 });
 
+/* ---------- 患者版 ---------- */
+const sheetOf = (concomitant, target, fromWeek, days) =>
+  patientSheet(planOf("demoA", concomitant, target).segments, "2026-11-13", fromWeek, days);
+test("患者版", "片数说法：半片 / 1 片 / 1 片半 / 3 片", () => {
+  eq([0.5, 1, 1.5, 3].map(countText), ["半片", "1 片", "1 片半", "3 片"]);
+});
+test("患者版", "一种规格只说片数，多种规格说清是哪种药片", () => {
+  const p = [{ strength: 20, count: 1 }, { strength: 10, count: 0.5 }];
+  eq([slotText([p[0]], false), slotText(p, true)], ["1 片", "20毫克 1 片 加 10毫克 半片"]);
+});
+test("患者版", "第 1 周起 14 天：起止日期、时段、规格", () => {
+  const r = sheetOf(["demoInhibitorY"], 20, 1, 14);
+  eq([r.ok, r.rows.length, r.from, r.to, r.slots, r.strengths, r.rows.some(x => x.hints.length)],
+     [true, 14, "2026-11-13", "2026-11-26", ["早"], [10], false]);
+});
+test("患者版", "从第 3 周起：首日就是加量日；换规格的那天额外提示改用哪种药片", () => {
+  const r = sheetOf(["demoInhibitorY"], 20, 3, 28);
+  eq([r.from, r.rows[0].hints, r.rows[1].hints, r.rows[14].hints, r.strengths],
+     ["2026-11-27", ["今天开始加量"], [], ["今天开始加量", "改用 20 毫克的药片"], [10, 20]]);
+});
+test("患者版", "日剂量不变只改分次 → 提示吃法改变，而不是加量", () => {
+  const seg = (weekFrom, weekTo, perDay, strength) => ({ weekFrom, weekTo, dailyDose: 20, dosesPerDay: perDay, note: "", fit: mkFit("daily", perDay, strength, 1) });
+  eq(patientSheet([seg(1, 1, 1, 20), seg(2, null, 2, 10)], "2026-11-13", 2, 7).rows[0].hints, ["今天起吃法改变", "改用 10 毫克的药片"]);
+});
+test("患者版", "有剂量段凑不出片 → 不出患者版", () => {
+  eq(sheetOf([], 30, 1, 14).ok, false);
+});
+test("患者版", "起始周或天数非法 → 不出患者版", () => {
+  eq([sheetOf([], 40, 0, 14).ok, sheetOf([], 40, 1.5, 14).ok, sheetOf([], 40, 1, 0).ok], [false, false, false]);
+});
+test("患者版", "打印排版：常规内容用最大字号单行排；内容变密时 14 天版改叠排、28 天版缩小字号", () => {
+  const dense = sheetOf([], 80, 5, 14); // 每日 2 次、两种规格、最多每次 3 片
+  eq([printLayout(sheetOf([], 40, 1, 14), 14), printLayout(sheetOf([], 40, 1, 28), 28), printLayout(dense, 14)],
+     [{ stacked: false, pt: 20 }, { stacked: false, pt: 13 }, { stacked: true, pt: 15 }]);
+  const d28 = printLayout(sheetOf([], 80, 5, 28), 28);
+  eq([d28.stacked, d28.pt < 13], [false, true]);
+});
+test("排日历", "每天记录所属剂量段下标", () => {
+  eq(toCalendar(SCHED, "2026-03-01", 9).days.map(d => d.seg), [0, 0, 0, 0, 0, 0, 0, 1, 1]);
+});
+
 /* ---------- FIXTURES：说明书标准滴定方案（待使用者填入），程序输出须与之逐字一致 ----------
  * 每条格式：
  * { name: "说明书××方案",            // 显示名
@@ -976,7 +1163,7 @@ function runFixtures() {
  * 七、界面（只负责读表单、调用计算核心、把结果画出来）
  * ===================================================================== */
 const $ = id => document.getElementById(id);
-let currentPlan = null; // 当前方案只放在内存变量里，刷新即失；不写入任何浏览器存储
+let currentPlan = null, currentSheet = null; // 当前方案只放在内存变量里，刷新即失；不写入任何浏览器存储
 
 function initForm() {
   $("form").reset();
@@ -991,7 +1178,11 @@ function initForm() {
   $("f-date").value = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()); // 默认今天（本地日期）
   $("f-drug").addEventListener("change", fillPaths);
   $("form").addEventListener("submit", e => { e.preventDefault(); generate(); });
-  $("out").addEventListener("click", e => { if (e.target.id === "btn-export") doExport(); });
+  $("out").addEventListener("click", e => {
+    if (e.target.id === "btn-export") doExport();
+    if (e.target.dataset.print) printOnly(e.target.dataset.print);
+  });
+  window.addEventListener("afterprint", () => { document.body.className = ""; });
   fillPaths();
 }
 
@@ -1010,7 +1201,9 @@ function readInput() {
     targetDose: parseFloat($("f-dose").value),
     concomitant: checked.concat(other),
     startDate: $("f-date").value,
-    manualPathIndex: $("f-path").value === "" ? null : +$("f-path").value
+    manualPathIndex: $("f-path").value === "" ? null : +$("f-path").value,
+    patientDays: +$("f-days").value,
+    patientFromWeek: Number($("f-from").value)
   };
 }
 
@@ -1018,8 +1211,12 @@ function generate() {
   const input = readInput();
   let plan = buildPlan(input, ALL_DRUGS, ACTIVE_CLASSES, { maxPiecesWarn: MAX_PIECES_PER_DOSE_WARN });
   if (plan.ok && isNaN(isoToUTC(input.startDate))) plan = { ok: false, needsManual: false, error: "请填写起始日期" };
-  currentPlan = plan.ok ? plan : null;
-  if (plan.ok) { $("out").innerHTML = renderDoctor(plan); return; }
+  currentPlan = plan.ok ? plan : null; currentSheet = null;
+  if (plan.ok) {
+    currentSheet = patientSheet(plan.segments, input.startDate, input.patientFromWeek, input.patientDays);
+    $("out").innerHTML = renderDoctor(plan) + renderPatient(plan, currentSheet);
+    return;
+  }
   $("out").innerHTML = '<div class="msg ' + (plan.needsManual ? "warn" : "err") + '">' +
     (plan.needsManual ? "<b>无法自动判定：</b>" + esc(plan.error) + "。请在上方「滴定方案」中手动选择一条方案后重新生成。" : esc(plan.error)) + "</div>";
 }
@@ -1054,7 +1251,8 @@ function renderDoctor(plan) {
     list(d.cautions || [], "warn", "注意事项：") +
     '<div class="muted">数据来源：' + esc(src) + "｜数据核对状态：" + (plan.unverified ? "未核对" : "已核对") +
       "｜工具版本 " + TOOL_VERSION + "</div>" +
-    '<div class="no-print" style="margin-top:10px"><button type="button" class="sec" id="btn-export">导出结构化数据（JSON）</button> ' +
+    '<div class="no-print" style="margin-top:10px"><button type="button" data-print="doctor">打印医生版</button> ' +
+      '<button type="button" class="sec" id="btn-export">导出结构化数据（JSON）</button> ' +
       '<a class="btn sec" id="export-dl" hidden>下载 .json 文件</a>' +
       '<textarea id="export-json" readonly hidden></textarea></div>' +
     "</section>";
@@ -1063,12 +1261,73 @@ function renderDoctor(plan) {
 // 导出：只在点击时现场生成，显示在文本框并提供下载链接；不自动保存到任何地方
 function doExport() {
   if (!currentPlan) return;
-  const json = JSON.stringify(exportData(currentPlan, new Date().toISOString()), null, 2);
+  const json = JSON.stringify(exportData(currentPlan, new Date().toISOString(), currentSheet), null, 2);
   $("export-json").value = json; $("export-json").hidden = false;
   const a = $("export-dl");
   a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
   a.download = "titration-" + currentPlan.drug.id + "-" + currentPlan.input.startDate + ".json";
   a.hidden = false;
+}
+
+// 药片图形：整片 = 圆，半片 = 半圆。style 0 白底 / 1 黑底 / 2 灰底，用于区分不同规格；label 是印在整片上的规格数字
+function pillSvg(half, style, label) {
+  const fill = ["#fff", "#000", "#bbb"][style % 3], ink = style % 3 === 1 ? "#fff" : "#000";
+  const attr = ' fill="' + fill + '" stroke="#000" stroke-width="2"/>';
+  return '<svg class="pill" viewBox="0 0 24 24" aria-hidden="true">' +
+    (half ? '<path d="M12 2A10 10 0 0 0 12 22Z"' + attr : '<circle cx="12" cy="12" r="10"' + attr) +
+    (label && !half ? '<text x="12" y="15.5" text-anchor="middle" font-size="' + (label.length > 2 ? 7.5 : 10) + '" font-weight="700" fill="' + ink + '">' + esc(label) + "</text>" : "") +
+    "</svg>";
+}
+
+function renderPatient(plan, sheet) {
+  if (!sheet.ok) return '<div class="msg err"><b>未生成患者版：</b>' + esc(sheet.error) + "</div>";
+  const d = plan.drug, multi = sheet.strengths.length > 1, days = sheet.rows.length;
+  const styleOf = st => multi ? sheet.strengths.indexOf(st) : 0;
+  const glyphs = p => {
+    const half = p.count % 1 !== 0, whole = Math.floor(p.count), lab = multi ? fmtNum(p.strength) : "";
+    if (glyphCount(p.count) === 1 && p.count > 1) return pillSvg(false, styleOf(p.strength), lab);
+    return pillSvg(false, styleOf(p.strength), lab).repeat(whole) + (half ? pillSvg(true, styleOf(p.strength), "") : "");
+  };
+  const cn = iso => +iso.slice(5, 7) + " 月 " + +iso.slice(8) + " 日";
+  const wk = iso => "周" + "日一二三四五六"[new Date(isoToUTC(iso)).getUTCDay()];
+  const when = { "早": "早上", "中": "中午", "晚": "晚上" };
+  const hasHint = sheet.rows.some(r => r.hints.length), lay = printLayout(sheet, days);
+
+  const rows = sheet.rows.map(r => {
+    const cells = r.skip ? '<div class="pt-skip">今天不吃药</div>' : sheet.slots.map(k => {
+      const p = r.slots[k];
+      return '<div class="pt-slot">' + (p ? '<span class="when">' + when[k] + '</span><span class="pills">' + p.map(glyphs).join("") +
+        "</span><span>" + (multi ? p : [p]).map(x => '<span class="nw">' + esc(slotText([].concat(x), multi)) + "</span>").join(" 加 ") + "</span>" : "") + "</div>";
+    }).join("");
+    return '<div class="pt-row' + (r.hints.length ? " chg" : "") + '"><div class="pt-date">' + (+r.date.slice(5, 7)) + "月" + (+r.date.slice(8)) + "日<small>" + wk(r.date) + "</small></div>" +
+      '<div class="pt-slots">' + cells + "</div>" +
+      (hasHint ? '<div class="pt-hint">' + r.hints.map((h, i) => esc((i ? "" : "★ ") + h)).join("<br>") + "</div>" : "") + "</div>";
+  }).join("");
+
+  const legend = (multi
+    ? sheet.strengths.map(st => "<span>" + pillSvg(false, styleOf(st), fmtNum(st)) + "= " + fmtNum(st) + " 毫克的药片</span>")
+    : ["<span>" + pillSvg(false, 0, "") + "= 1 片（每片 " + fmtNum(sheet.strengths[0]) + " 毫克）</span>"])
+    .concat(sheet.usesHalf ? ["<span>" + pillSvg(true, 0, "") + "= 半片</span>"] : []).join("");
+  const blank = name => "<div>" + name + "<i></i></div>";
+
+  const small = lay.pt < MIN_PRINT_PT_WARN ? '<div class="msg warn">这张表内容较密，打印后"吃几片"的字号约 ' + lay.pt + " pt，患者可能看不清。" +
+    (days > 14 ? "建议改用 14 天版。" : "建议减少每次的药片种类或片数。") + "</div>" : "";
+  return '<section class="card out pt ' + (days <= 14 ? "d14" : "d28") + (lay.stacked ? " stk" : "") + '" id="out-patient" style="--n:' + sheet.slots.length + ";--pfs:" + lay.pt + 'pt">' +
+    (plan.unverified ? unverifiedMarks(d) : "") +
+    '<div class="no-print" style="margin-bottom:8px"><button type="button" data-print="patient">打印患者版（A4）</button>' + small + "</div>" +
+    '<div class="pt-title">服药日历<span>' + esc(d.nameCn) + (d.brandCn && d.brandCn.length ? "（" + esc(d.brandCn.join("、")) + "）" : "") + "</span></div>" +
+    '<div class="pt-sum">这张表管 ' + cn(sheet.from) + "到 " + cn(sheet.to) + "，共 " + days + " 天</div>" +
+    '<div class="pt-legend">' + legend + "</div>" +
+    '<div class="pt-rows">' + rows + "</div>" +
+    '<div class="pt-foot">' + ["患者姓名", "医生姓名", "复诊日期", "紧急联系方式"].map(blank).join("") + "</div>" +
+    '<div class="pt-ver">工具版本 ' + TOOL_VERSION + "｜" + (plan.unverified ? "数据未核对" : "数据已核对") + "</div>" +
+    "</section>";
+}
+
+// 只打印医生版或患者版：给 body 加一个类，打印样式据此隐藏另一份；打印结束后复原
+function printOnly(which) {
+  document.body.className = "print-" + which;
+  window.print();
 }
 
 /* =====================================================================
